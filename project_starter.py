@@ -271,6 +271,34 @@ def search_quote_history(search_terms: List[str], limit: int = 5) -> List[Dict]:
         return [dict(row._mapping) for row in result]
 
 
+def call_your_multi_agent_system(request_with_date: str, request_date: str, orchestrator: "OrchestrationAgent") -> Dict:
+    """Adapter hook used by the test harness to route requests through the multi-agent workflow."""
+    return orchestrator.handle_request(request_with_date, request_date)
+
+
+def generate_financial_report(request_date: str) -> Dict[str, float]:
+    """Snapshot core financial state for each processed request date."""
+    current_cash = round(get_cash_balance(request_date), 2)
+    inventory_query = """
+        SELECT COALESCE(SUM(i.unit_price * s.current_stock), 0) AS inventory_value
+        FROM inventory i
+        LEFT JOIN (
+            SELECT item_name,
+                   COALESCE(SUM(CASE
+                       WHEN transaction_type='stock_orders' THEN units
+                       WHEN transaction_type='sales' THEN -units
+                       ELSE 0
+                   END), 0) AS current_stock
+            FROM transactions
+            WHERE transaction_date <= :as_of_date
+            GROUP BY item_name
+        ) s ON i.item_name = s.item_name
+    """
+    inventory_df = pd.read_sql(inventory_query, db_engine, params={"as_of_date": request_date})
+    inventory_value = round(float(inventory_df["inventory_value"].iloc[0]), 2) if not inventory_df.empty else 0.0
+    return {"cash_balance": current_cash, "inventory_value": inventory_value}
+
+
 def run_test_scenarios():
     print("Initializing Database...")
     init_database(db_engine)
@@ -286,15 +314,21 @@ def run_test_scenarios():
     quote_requests_sample.dropna(subset=["request_date"], inplace=True)
     quote_requests_sample = quote_requests_sample.sort_values("request_date")
 
+    # Initialize multi-agent system and create agents.
     orchestrator = OrchestrationAgent()
     results = []
     for idx, row in quote_requests_sample.iterrows():
         request_date = row["request_date"].strftime("%Y-%m-%d")
         request_with_date = f"{row['request']} (Date of request: {request_date})"
-        response = orchestrator.handle_request(request_with_date, request_date)
+        # response = call_your_multi_agent_system(request_with_date)
+        response = call_your_multi_agent_system(request_with_date, request_date, orchestrator)
         inv = response["inventory"]
         quote = response["quote"]
         order = response.get("order", {})
+        # Update state for eg.
+        report = generate_financial_report(request_date)
+        current_cash = report["cash_balance"]
+        current_inventory = report["inventory_value"]
         orders_accommodated = bool(response.get("status") == "fulfilled")
         profitability = round(float(quote["total_amount"]) - float(quote["quantity"]) * float(quote["unit_price"]), 2)
         competitive_pricing = bool(0 <= float(quote.get("discount_rate", 0.0)) <= 0.10)
@@ -316,6 +350,8 @@ def run_test_scenarios():
                 "orders_accommodated": orders_accommodated,
                 "competitive_pricing": competitive_pricing,
                 "profitability_dollars": profitability,
+                "cash_balance": current_cash,
+                "inventory_value": current_inventory,
             }
         )
         time.sleep(0.1)
