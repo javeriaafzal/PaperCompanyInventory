@@ -1,61 +1,71 @@
-# Multi-Agent Workflow Diagram
+# Multi-Agent Workflow Diagram (Updated for Step 6)
 
-This flowchart reflects the implemented Step 4 agent orchestration in `multi_agent_system.py`.
+The system uses **4 agents** (max allowed is 5):
+1. OrchestrationAgent (orchestrator)
+2. InventoryAgent
+3. QuoteAgent
+4. OrderingAgent
 
 ```mermaid
-flowchart LR
-    C[Customer Inquiry] --> O[Orchestrator Agent]
+flowchart TD
+    U[Customer Request Text + Request Date] --> O[OrchestrationAgent]
 
-    subgraph Inventory_Path[Inventory Path]
-        O --> IA[Inventory Agent]
-        IA --> DB[(SQLite Inventory DB)]
-        DB --> IA
-        IA --> S{Enough stock?}
-        S -->|Yes| AV[Available Now]
-        S -->|No| ETA[(estimate_supplier_delivery helper)]
-        ETA --> IA
-        IA --> RE[Reorder Recommendation + ETA]
-    end
+    O --> P[parse_request helper]
+    P --> I[InventoryAgent]
+    I --> T1[get_stock_level(item_name, as_of_date)]
+    I --> T2[get_supplier_delivery_date(request_date, shortage)]
+    I --> IR[Inventory result: available / shortage / eta]
 
-    subgraph Quote_Path[Quote Path]
-        O --> QA[Quote Agent]
-        QA --> TX[(Transactions Ledger via DB helper)]
-        TX --> QA
-        AV --> QA
-        RE --> QA
-        QA --> BAL[(get_current_cash_balance helper)]
-        BAL --> QA
-        QA --> QP[Quote Package\nPrice, Terms, ETA]
-    end
+    IR --> Q[QuoteAgent]
+    Q --> T3[search_quote_history(search_terms, limit)]
+    Q --> T4[get_cash_balance(request_date)]
+    Q --> QR[Quote result: unit price, discount, total, terms, eta, rationale]
 
-    QP --> O
-    O --> C
-    C -->|Accept Quote| O
+    QR --> O
+    O --> D{Auto-accept in eval harness?}
 
-    subgraph Fulfillment_Path[Fulfillment Path]
-        O --> FA[Order Fulfillment Agent]
-        FA --> V{Inventory still valid?}
-        V -->|No| IA
-        V -->|Yes| FO[(update_stock + record_transaction helpers)]
-        FO --> FA
-        FA --> OC[Order Confirmation\nOrder ID, Ship Date, ETA]
-    end
+    D -->|Yes| F[OrderingAgent]
+    F --> T5[get_stock_level recheck]
+    F --> T6[create_transaction(stock_orders)]
+    F --> T7[create_transaction(sales)]
+    F --> FR[Fulfillment result + status]
 
-    OC --> C
+    D -->|No| RQ[Return quote only]
+    FR --> OUT[Customer-safe response]
+    RQ --> OUT
 ```
 
-## Implementation Notes (Step 4)
+## Agent Responsibilities (Non-overlapping)
 
-- The orchestrator is implemented as `OrchestratorAgent` and manages control/data flow.
-- Worker agents are implemented as:
-  - `InventoryAgent`
-  - `QuoteAgent`
-  - `OrderFulfillmentAgent`
-- Tooling is wired directly to starter helpers in `project_starter.py`:
-  - `init_db`
-  - `get_stock` / `update_stock`
-  - `record_transaction`
-  - `estimate_supplier_delivery`
-  - `get_current_cash_balance`
-- The low-stock branch produces an ETA and returns a quote with replenishment timing.
-- The fulfillment branch revalidates stock before committing inventory and ledger writes.
+- **OrchestrationAgent**
+  - Routes requests and composes final response.
+  - Delegates inventory, quote, and fulfillment in sequence.
+
+- **InventoryAgent**
+  - Handles only stock feasibility checks.
+  - Computes shortage and delivery ETA for shortages.
+
+- **QuoteAgent**
+  - Handles only price construction, discount policy, payment terms, and quote explanation context.
+  - Uses cash state and quote history for transparent rationale.
+
+- **OrderingAgent**
+  - Handles only execution: recheck stock, create transactions, and finalize order status.
+
+## Tool Mapping and Purpose
+
+- `parse_request`: Parse line item and quantity from natural-language request.
+- `get_stock_level`: Determine stock on a specific date.
+- `get_supplier_delivery_date`: Estimate supplier ETA for shortages.
+- `search_quote_history`: Retrieve similar historical quotes for quote consistency.
+- `get_cash_balance`: Set payment terms based on current liquidity.
+- `create_transaction`: Record both replenishment buys and finalized sales.
+
+## Orchestration/Data Flow
+
+1. Customer request enters orchestrator.
+2. Orchestrator parses request and asks InventoryAgent for availability.
+3. QuoteAgent uses inventory outcome + history + cash balance to build quote.
+4. In evaluation mode, orchestrator auto-accepts and delegates to OrderingAgent.
+5. OrderingAgent writes transactions and returns fulfillment status.
+6. Orchestrator returns customer-facing response without exposing sensitive internals.
