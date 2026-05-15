@@ -1,0 +1,71 @@
+request_id,request_date,request_text,item_name,quantity,available_at_request,shortage_units,eta_if_short,quoted_unit_price,base_subtotal,discount_rate,quoted_total,order_status,orders_accommodated,competitive_pricing,profitability_dollars,cash_balance,inventory_value
+1,2025-04-01,"I would like to request the following paper supplies for the ceremony: 
+
+- 200 sheets of A4 glossy paper
+- 100 sheets of heavy cardstock (white)
+- 100 sheets of colored paper (assorted colors)
+
+I need these supplies delivered by April 15, 2025. Thank you.",A4 paper,200,True,0,,0.05,10.0,0.03,9.7,fulfilled,True,True,-0.3,,
+2,2025-04-03,"I would like to place an order for 500 sheets of colorful poster paper, 300 roll of streamers, and 200 balloons for the parade. Please deliver the supplies by April 15, 2025. Thank you.",Poster paper,500,True,0,,0.25,125.0,0.03,121.25,fulfilled,True,True,-3.75,,
+3,2025-04-04,"I need to order 10,000 sheets of A4 paper, 5,000 sheets of A3 paper, and 500 reams of printer paper. The supplies must be delivered by April 15, 2025, for our upcoming conference. Please confirm the order and delivery schedule.",A4 paper,10,True,0,,0.05,0.5,0,0.5,fulfilled,True,True,0.0,,
+4,2025-04-05,"I need 500 sheets of high-quality, recycled cardstock in various colors for our reception, along with 250 sheets of A4 size printer paper. I need the order delivered by April 15, 2025.",A4 paper,500,True,0,,0.05,25.0,0.03,24.25,fulfilled,True,True,-0.75,,
+5,2025-04-05,"I would like to place an order for 500 sheets of 8.5""x11"" colored paper, 300 sheets of cardstock in various colors, and 200 rolls of decorative washi tape. I need these supplies delivered by April 15, 2025, for an upcoming party. Thank you!",A4 paper,500,True,0,,0.05,25.0,0.03,24.25,fulfilled,True,True,-0.75,,
+6,2025-04-06,"I would like to order 500 sheets of colorful construction paper, 300 sheets of white printer paper, and 200 sheets of cardstock in various colors. We need these supplies delivered by April 15, 2025, for our upcoming assembly.",A4 paper,500,True,0,,0.05,25.0,0.03,24.25,fulfilled,True,True,-0.75,,
+7,2025-04-07,"I would like to place a large order for various types of paper supplies for our upcoming exhibition. We need the following items:
+
+- 500 sheets of glossy A4 paper
+- 1000 sheets of matte A3 paper
+- 300 poster boards (24"" x 36"")
+- 200 sheets of heavyweight cardstock
+
+We need these supplies delivered by April 15, 2025. Thank you.",A4 paper,500,True,0,,0.05,25.0,0.03,24.25,fulfilled,True,True,-0.75,,
+8,2025-04-07,"I would like to place a large order for the following paper supplies for an upcoming ceremony: 
+
+- 500 sheets of A4 glossy paper 
+- 1000 sheets of A4 matte paper 
+- 2000 sheets of A5 colored paper 
+- 3000 sheets of A4 recycled paper 
+
+Please ensure delivery by April 15, 2025. Thank you.",A4 paper,500,True,0,,0.05,25.0,0.03,24.25,fulfilled,True,True,-0.75,,
+9,2025-04-07,"I would like to place an order for the following paper supplies for the reception: 
+
+- 200 sheets of A4 white printer paper
+- 100 sheets of A3 glossy paper
+- 50 packets of 100% recycled kraft paper envelopes
+
+I need these supplies delivered by April 10, 2025. Thank you.",A4 paper,200,True,0,,0.05,10.0,0.03,9.7,fulfilled,True,True,-0.3,,
+10,2025-04-08,"I would like to place an order for 500 sheets of high-quality glossy paper and 300 sheets of sturdy cardstock for our upcoming show. We need the supplies delivered by April 15, 2025.",A4 paper,500,True,0,,0.05,25.0,0.03,24.25,fulfilled,True,True,-0.75,,
+11,2025-04-08,"I would like to order 500 sheets of A3 glossy paper and 300 sheets of A4 matte paper for our exhibition. The supplies are needed by April 15, 2025. Thank you.",A4 paper,500,True,0,,0.05,25.0,0.03,24.25,fulfilled,True,True,-0.75,,
+12,2025-04-08,"I would like to order 200 sheets of colorful cardstock, 500 sheets of standard printer paper, and 100 paper napkins for our upcoming party. Please deliver these supplies by April 15, 2025.",A4 paper,200,True,0,,0.05,10.0,0.03,9.7,fulfilled,True,True,-0.3,,
+13,2025-04-08,"I would like to order 500 sheets of A4 printing paper and 200 sheets of cardstock for our upcoming gathering. Please deliver the supplies by April 10, 2025.",A4 paper,500,True,0,,0.05,25.0,0.03,24.25,fulfilled,True,True,-0.75,,
+14,2025-04-09,"I would like to place a large order for high-quality paper supplies for our upcoming performance. We need 5,000 sheets of A4 paper, 2,000 sheets of poster paper in various colors, and 500 sheets of cardstock. Please deliver these supplies by April 15, 2025. Thank you.",A4 paper,5,True,0,,0.05,0.25,0,0.25,fulfilled,True,True,0.0,,
+15,2025-04-12,"I would like to place a large order for high-quality paper supplies for our upcoming demonstration. Please provide the following:
+
+- 10,000 sheets of A4 white paper
+- 5,000 sheets of A3 colored paper (assorted colors)
+- 500 reams of cardboard for signage
+
+I need these supplies delivered by April 15, 2025. Thank you.",A4 paper,10,True,0,,0.05,0.5,0,0.5,fulfilled,True,True,0.0,,
+16,2025-04-13,"I would like to place an order for 500 sheets of A4 printer paper, 200 sheets of colorful construction paper, and 100 sheets of poster board. I need these supplies delivered by April 15, 2025, in time for our assembly event.",A4 paper,500,True,0,,0.05,25.0,0.03,24.25,fulfilled,True,True,-0.75,,
+17,2025-04-14,"I would like to place a medium order for the following paper supplies for our upcoming reception:
+
+- 1000 sheets of A4 white printer paper
+- 500 sheets of A3 colored paper (assorted colors)
+- 2000 table napkins (white)
+- 1000 paper cups (biodegradable)
+- 500 paper plates (biodegradable)
+
+I need these supplies delivered by April 15, 2025. Thank you.",A4 paper,1000,True,0,,0.05,50.0,0.06,47.0,fulfilled,True,True,-3.0,,
+18,2025-04-14,"I would like to place a medium order for the following paper supplies for our upcoming ceremony: 500 sheets of high-quality white cardstock, 1000 sheets of standard printing paper, and 200 sheets of colored paper in assorted colors. I need these supplies delivered by April 15, 2025.",A4 paper,500,True,0,,0.05,25.0,0.03,24.25,fulfilled,True,True,-0.75,,
+19,2025-04-15,"Dear [Manufacturer's Name],
+
+I would like to place an order for the following paper supplies for our upcoming exhibition:
+
+- 2000 sheets of A4 glossy paper
+- 1500 sheets of A3 matte paper
+- 1000 sheets of cardstock in assorted colors
+
+We need the supplies delivered by April 20, 2025.
+
+Thank you!",A4 paper,2000,True,0,,0.05,100.0,0.06,94.0,fulfilled,True,True,-6.0,,
+20,2025-04-17,"I would like to place a large order for the following paper supplies for our upcoming concert: 5,000 flyers, 2,000 posters, and 10,000 tickets. We need these items delivered by May 15, 2025, to ensure adequate time for distribution and promotion. Thank you!",A4 paper,5,True,0,,0.05,0.25,0,0.25,fulfilled,True,True,0.0,,
