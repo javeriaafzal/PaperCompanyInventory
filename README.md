@@ -56,14 +56,19 @@ Because this project uses a shared quoting-and-operations data pattern, each CSV
 
 ### 1) Install Dependencies
 
-Use Python 3.8+ (or newer), then install project dependencies:
+Use Python 3.8+ (or newer). This repository does **not** currently include a `requirements.txt`, so install the baseline dependencies directly:
 
 ```bash
-pip install -r requirements.txt
+python3 -m pip install numpy pandas sqlalchemy python-dotenv
 ```
 
+If you add a `requirements.txt` later, you can switch to:
 
-For other `pydantic-ai` framework, use each framework’s official installation guidance.
+```bash
+python3 -m pip install -r requirements.txt
+```
+
+For any optional framework integration (for example `pydantic-ai`), follow that framework's official installation guidance.
 
 ### 2) Create a `.env` File
 
@@ -75,7 +80,11 @@ If your environment uses an OpenAI-compatible proxy endpoint, configure that acc
 ## How to Run the Project
 
 1. Implement your agents in the designated multi-agent section of the starter/implementation script.
-2. Run the test scenario entry point (for example, the project’s provided simulation runner).
+2. Run the test scenario entry point (current starter command shown below).
+
+```bash
+python3 project_starter.py
+```
 3. Verify that the system coordinates:
    - inventory checks,
    - quote generation,
