@@ -7,32 +7,31 @@ The system uses **4 agents** (max allowed is 5):
 4. OrderingAgent
 
 ```mermaid
-flowchart TD
-    U[Customer Request Text + Request Date] --> O[OrchestrationAgent]
+flowchart LR
+    U[Customer request] --> O[OrchestrationAgent]
+    O --> P[parse_request]
 
-    O --> P[parse_request helper]
     P --> I[InventoryAgent]
-    I --> T1[get_stock_level(item_name, as_of_date)]
-    I --> T2[get_supplier_delivery_date(request_date, shortage)]
-    I --> IR[Inventory result: available / shortage / eta]
+    I --> I1[get_stock_level]
+    I --> I2[get_supplier_delivery_date]
+    I --> IR[Inventory result]
 
     IR --> Q[QuoteAgent]
-    Q --> T3[search_quote_history(search_terms, limit)]
-    Q --> T4[get_cash_balance(request_date)]
-    Q --> QR[Quote result: unit price, discount, total, terms, eta, rationale]
+    Q --> Q1[search_quote_history]
+    Q --> Q2[get_cash_balance]
+    Q --> QR[Quote result]
 
-    QR --> O
-    O --> D{Auto-accept in eval harness?}
-
+    QR --> D{Auto accept in eval mode}
+    D -->|No| RQ[Return quote]
     D -->|Yes| F[OrderingAgent]
-    F --> T5[get_stock_level recheck]
-    F --> T6[create_transaction(stock_orders)]
-    F --> T7[create_transaction(sales)]
-    F --> FR[Fulfillment result + status]
 
-    D -->|No| RQ[Return quote only]
-    FR --> OUT[Customer-safe response]
-    RQ --> OUT
+    F --> F1[get_stock_level recheck]
+    F --> F2[create_transaction stock_order]
+    F --> F3[create_transaction sale]
+    F --> FR[Fulfillment result]
+
+    RQ --> OUT[Customer response]
+    FR --> OUT
 ```
 
 ## Agent Responsibilities (Non-overlapping)
