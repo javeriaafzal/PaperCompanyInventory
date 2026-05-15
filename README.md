@@ -56,13 +56,7 @@ Because this project uses a shared quoting-and-operations data pattern, each CSV
 
 ### 1) Install Dependencies
 
-Use Python 3.8+ (or newer). This repository does **not** currently include a `requirements.txt`, so install the baseline dependencies directly:
-
-```bash
-python3 -m pip install numpy pandas sqlalchemy python-dotenv
-```
-
-If you add a `requirements.txt` later, you can switch to:
+Use Python 3.8+ (or newer), then install project dependencies:
 
 ```bash
 python3 -m pip install -r requirements.txt
