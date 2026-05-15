@@ -25,6 +25,18 @@ As code is added, this section should include:
 3. Local development commands
 4. Testing instructions
 
+## Agent Framework Selection (Step 3)
+
+For this project, we selected **pydantic-ai** as the agent orchestration framework.
+
+### Why pydantic-ai
+
+- Strong typed schemas for inputs/outputs, which fits quote and inventory workflows.
+- Reliable validation to reduce agent errors in business-critical operations.
+- Flexible orchestration patterns that support multi-step agent interactions and tool usage.
+
+This framework will be used as the baseline for planned agent interactions and orchestration design.
+
 ## Roadmap Ideas
 
 - Add core inventory domain models.
