@@ -329,6 +329,10 @@ def run_test_scenarios():
         report = generate_financial_report(request_date)
         current_cash = report["cash_balance"]
         current_inventory = report["inventory_value"]
+
+        print(f"Response: {response}")
+        print(f"Updated Cash: ${current_cash:.2f}")
+        print(f"Updated Inventory: ${current_inventory:.2f}")
         orders_accommodated = bool(response.get("status") == "fulfilled")
         profitability = round(float(quote["total_amount"]) - float(quote["quantity"]) * float(quote["unit_price"]), 2)
         competitive_pricing = bool(0 <= float(quote.get("discount_rate", 0.0)) <= 0.10)
@@ -355,6 +359,13 @@ def run_test_scenarios():
             }
         )
         time.sleep(0.1)
+
+    # Final report
+    final_date = quote_requests_sample["request_date"].max().strftime("%Y-%m-%d")
+    final_report = generate_financial_report(final_date)
+    print("\n===== FINAL FINANCIAL REPORT =====")
+    print(f"Final Cash: ${final_report['cash_balance']:.2f}")
+    print(f"Final Inventory: ${final_report['inventory_value']:.2f}")
 
     pd.DataFrame(results).to_csv("test_results.csv", index=False)
     return results
