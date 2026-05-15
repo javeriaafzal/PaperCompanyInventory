@@ -167,6 +167,17 @@ def get_cash_balance(as_of_date: Union[str, datetime]) -> float:
 
 def parse_request(request_text: str) -> Dict[str, Union[str, int]]:
     req_l = request_text.lower()
+    # Parse multiple "qty + item" mentions and choose the line item with the largest value.
+    # This keeps the baseline contract (single line-item quote) while handling richer inquiries.
+    mentions = []
+    for paper in paper_supplies:
+        item_l = paper["item_name"].lower()
+        pattern = rf"(\d{{1,6}})\s+(?:sheets?\s+of\s+|rolls?\s+of\s+|reams?\s+of\s+)?{re.escape(item_l)}"
+        for m in re.finditer(pattern, req_l):
+            mentions.append((int(m.group(1)), paper["item_name"]))
+    if mentions:
+        quantity, item = max(mentions, key=lambda x: x[0])
+        return {"item_name": item, "quantity": quantity}
     match_qty = re.search(r"(\d+)", req_l)
     quantity = int(match_qty.group(1)) if match_qty else 100
     item = next((p["item_name"] for p in paper_supplies if p["item_name"].lower() in req_l), "A4 paper")
@@ -186,11 +197,27 @@ class InventoryAgent:
 class QuoteAgent:
     def create_quote(self, item_name: str, quantity: int, request_date: str, inventory_result: Dict) -> Dict:
         unit_price = next((p["unit_price"] for p in paper_supplies if p["item_name"] == item_name), 0.1)
-        subtotal = round(unit_price * quantity, 2)
+        base_subtotal = round(unit_price * quantity, 2)
+        # Competitive discounting with profitability floor (>= 8% gross margin).
+        discount_rate = 0.00 if quantity < 200 else 0.03 if quantity < 1000 else 0.06 if quantity < 5000 else 0.09
+        discounted_subtotal = round(base_subtotal * (1 - discount_rate), 2)
+        estimated_cost = round(base_subtotal * 0.80, 2)
+        minimum_profitable = round(estimated_cost * 1.08, 2)
+        total_amount = max(discounted_subtotal, minimum_profitable)
         historical = search_quote_history([item_name.split()[0]], limit=3)
         cash = get_cash_balance(request_date)
         terms = "Net 30" if cash >= 0 else "Prepay"
-        return {"item_name": item_name, "quantity": quantity, "unit_price": unit_price, "total_amount": subtotal, "eta": inventory_result["eta"], "terms": terms, "history_matches": historical}
+        return {
+            "item_name": item_name,
+            "quantity": quantity,
+            "unit_price": unit_price,
+            "base_subtotal": base_subtotal,
+            "discount_rate": discount_rate,
+            "total_amount": round(total_amount, 2),
+            "eta": inventory_result["eta"],
+            "terms": terms,
+            "history_matches": historical,
+        }
 
 
 class OrderingAgent:
@@ -265,7 +292,32 @@ def run_test_scenarios():
         request_date = row["request_date"].strftime("%Y-%m-%d")
         request_with_date = f"{row['request']} (Date of request: {request_date})"
         response = orchestrator.handle_request(request_with_date, request_date)
-        results.append({"request_id": idx + 1, "request_date": request_date, "response": response})
+        inv = response["inventory"]
+        quote = response["quote"]
+        order = response.get("order", {})
+        orders_accommodated = bool(response.get("status") == "fulfilled")
+        profitability = round(float(quote["total_amount"]) - float(quote["quantity"]) * float(quote["unit_price"]), 2)
+        competitive_pricing = bool(0 <= float(quote.get("discount_rate", 0.0)) <= 0.10)
+        results.append(
+            {
+                "request_id": idx + 1,
+                "request_date": request_date,
+                "request_text": row["request"],
+                "item_name": quote["item_name"],
+                "quantity": quote["quantity"],
+                "available_at_request": inv["available"],
+                "shortage_units": inv["shortage"],
+                "eta_if_short": inv["eta"],
+                "quoted_unit_price": quote["unit_price"],
+                "base_subtotal": quote.get("base_subtotal", round(quote["unit_price"] * quote["quantity"], 2)),
+                "discount_rate": quote.get("discount_rate", 0.0),
+                "quoted_total": quote["total_amount"],
+                "order_status": order.get("status", "not_ordered"),
+                "orders_accommodated": orders_accommodated,
+                "competitive_pricing": competitive_pricing,
+                "profitability_dollars": profitability,
+            }
+        )
         time.sleep(0.1)
 
     pd.DataFrame(results).to_csv("test_results.csv", index=False)
