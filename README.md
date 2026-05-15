@@ -62,22 +62,12 @@ Use Python 3.8+ (or newer), then install project dependencies:
 pip install -r requirements.txt
 ```
 
-If using `smolagents`, install it separately:
 
-```bash
-pip install smolagents
-```
-
-For other frameworks (such as `pydantic-ai` or alternatives), use each framework’s official installation guidance.
+For other `pydantic-ai` framework, use each framework’s official installation guidance.
 
 ### 2) Create a `.env` File
 
 Add your API key:
-
-```env
-UDACITY_OPENAI_API_KEY=your_openai_key_here
-```
-
 If your environment uses an OpenAI-compatible proxy endpoint, configure that according to your runtime requirements.
 
 ---
@@ -102,22 +92,11 @@ Typical outputs should include:
 
 ## Tips for Success
 
-- Create a **workflow diagram** before coding to define clear agent responsibilities.
+- Read **workflow diagram** before coding to define clear agent responsibilities.
 - Validate each tool path (inventory, quote, fulfillment) independently before full orchestration.
 - Include **explicit dates** in inter-agent payloads when relevant to business logic.
 - Keep quote logic consistent with historical data and discount rules.
 - Use canonical item names consistently to prevent transaction mismatches.
-
----
-
-## Submission Checklist
-
-Prepare the following deliverables:
-
-1. Completed implementation file(s) with agent orchestration logic (`project_starter.py` and/or `multi_agent_system.py`)
-2. A workflow diagram showing architecture and data flow
-3. A design note (`README`, `README.txt`, or `design_notes.txt`) explaining your approach
-4. Test outputs (for example, generated result CSV files)
 
 ---
 
