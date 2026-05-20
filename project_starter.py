@@ -182,6 +182,11 @@ ordering_agent = Agent(
     system_prompt="Execute stock replenishment and sales transactions for accepted quotes.",
 )
 
+reporting_agent = Agent(
+    name="reporting_agent",
+    system_prompt="Generate financial and inventory snapshots for reporting.",
+)
+
 
 def parse_request(request_text: str) -> Dict[str, Union[str, int]]:
     req_l = request_text.lower()
@@ -256,6 +261,7 @@ class OrchestrationAgent:
         self.inventory_agent = inventory_agent
         self.quote_agent = quote_agent
         self.ordering_agent = ordering_agent
+        self.reporting_agent = reporting_agent
 
     def handle_request(self, request_text: str, request_date: str) -> Dict:
         parsed = parse_request(request_text)
@@ -263,6 +269,7 @@ class OrchestrationAgent:
         quote = create_quote(parsed["item_name"], parsed["quantity"], request_date, inv)
         result = {"inventory": inv, "quote": quote, "status": "quoted"}
         result["order"] = fulfill_quote(quote, request_date)
+        result["financial_report"] = generate_financial_report_tool(request_date)
         result["status"] = "fulfilled"
         return result
 
@@ -292,11 +299,13 @@ def call_your_multi_agent_system(request_with_date: str, request_date: str, orch
     return orchestrator.handle_request(request_with_date, request_date)
 
 
-def generate_financial_report(request_date: str) -> Dict[str, float]:
-    """Snapshot core financial state for each processed request date."""
-    current_cash = round(get_cash_balance(request_date), 2)
+def get_all_inventory(request_date: str) -> pd.DataFrame:
+    """Return all inventory rows with computed stock levels as of a date."""
     inventory_query = """
-        SELECT COALESCE(SUM(i.unit_price * s.current_stock), 0) AS inventory_value
+        SELECT i.item_name,
+               i.category,
+               i.unit_price,
+               COALESCE(s.current_stock, 0) AS current_stock
         FROM inventory i
         LEFT JOIN (
             SELECT item_name,
@@ -310,9 +319,21 @@ def generate_financial_report(request_date: str) -> Dict[str, float]:
             GROUP BY item_name
         ) s ON i.item_name = s.item_name
     """
-    inventory_df = pd.read_sql(inventory_query, db_engine, params={"as_of_date": request_date})
-    inventory_value = round(float(inventory_df["inventory_value"].iloc[0]), 2) if not inventory_df.empty else 0.0
+    return pd.read_sql(inventory_query, db_engine, params={"as_of_date": request_date})
+
+
+def generate_financial_report(request_date: str) -> Dict[str, float]:
+    """Snapshot core financial state for each processed request date."""
+    current_cash = round(get_cash_balance(request_date), 2)
+    inventory_df = get_all_inventory(request_date)
+    inventory_value = round(float((inventory_df["unit_price"] * inventory_df["current_stock"]).sum()), 2) if not inventory_df.empty else 0.0
     return {"cash_balance": current_cash, "inventory_value": inventory_value}
+
+
+@reporting_agent.tool
+def generate_financial_report_tool(request_date: str) -> Dict[str, float]:
+    """Tool wrapper so financial reports are available in the agent/tool graph."""
+    return generate_financial_report(request_date)
 
 
 def run_test_scenarios():
