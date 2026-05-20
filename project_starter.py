@@ -238,6 +238,22 @@ def create_quote(item_name: str, quantity: int, request_date: str, inventory_res
         "history_matches": historical,
     }
 
+def build_customer_quote_response(quote: Dict) -> Dict:
+    rationale = (
+        f"Quoted using a unit price of ${quote['unit_price']:.2f} with a "
+        f"{quote['discount_rate']:.0%} volume discount based on order size."
+    )
+    return {
+        "item": quote["item_name"],
+        "quantity": quote["quantity"],
+        "quoted_unit_price": quote["unit_price"],
+        "discount_rate": quote["discount_rate"],
+        "total_amount": quote["total_amount"],
+        "payment_terms": quote["terms"],
+        "eta": quote["eta"],
+        "rationale": rationale,
+    }
+
 
 def fulfill_quote(quote: Dict, request_date: str) -> Dict:
     item_name = quote["item_name"]
@@ -272,7 +288,8 @@ class OrchestrationAgent:
         parsed = parse_request(request_text)
         inv = check_inventory(parsed["item_name"], parsed["quantity"], request_date)
         quote = create_quote(parsed["item_name"], parsed["quantity"], request_date, inv)
-        result = {"inventory": inv, "quote": quote, "status": "quoted"}
+        customer_quote = build_customer_quote_response(quote)
+        result = {"quote": customer_quote, "status": "quoted"}
         result["order"] = fulfill_quote(quote, request_date)
         result["financial_report"] = generate_financial_report_tool(request_date)
         result["status"] = result["order"].get("status", "quoted")
