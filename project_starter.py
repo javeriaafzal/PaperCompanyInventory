@@ -205,7 +205,6 @@ def parse_request(request_text: str) -> Dict[str, Union[str, int]]:
     return {"item_name": item, "quantity": quantity}
 
 
-@inventory_agent.tool
 def check_inventory(item_name: str, quantity: int, request_date: str) -> Dict[str, Union[bool, int, str, None]]:
     stock_df = get_stock_level(item_name, request_date)
     current_stock = int(stock_df["current_stock"].iloc[0]) if not stock_df.empty else 0
@@ -215,7 +214,6 @@ def check_inventory(item_name: str, quantity: int, request_date: str) -> Dict[st
     return {"available": available, "current_stock": current_stock, "shortage": shortage, "eta": eta}
 
 
-@quote_agent.tool
 def create_quote(item_name: str, quantity: int, request_date: str, inventory_result: Dict) -> Dict:
     unit_price = next((p["unit_price"] for p in paper_supplies if p["item_name"] == item_name), 0.1)
     base_subtotal = round(unit_price * quantity, 2)
@@ -233,6 +231,7 @@ def create_quote(item_name: str, quantity: int, request_date: str, inventory_res
         "unit_price": unit_price,
         "base_subtotal": base_subtotal,
         "discount_rate": discount_rate,
+        "estimated_cost": estimated_cost,
         "total_amount": round(total_amount, 2),
         "eta": inventory_result["eta"],
         "terms": terms,
@@ -240,16 +239,22 @@ def create_quote(item_name: str, quantity: int, request_date: str, inventory_res
     }
 
 
-@ordering_agent.tool
 def fulfill_quote(quote: Dict, request_date: str) -> Dict:
     item_name = quote["item_name"]
     quantity = int(quote["quantity"])
     stock_df = get_stock_level(item_name, request_date)
     current_stock = int(stock_df["current_stock"].iloc[0]) if not stock_df.empty else 0
     if current_stock < quantity:
-        reorder_qty = quantity - current_stock
-        reorder_price = reorder_qty * quote["unit_price"]
-        create_transaction(item_name, "stock_orders", reorder_qty, reorder_price, request_date)
+        shortage = quantity - current_stock
+        eta = get_supplier_delivery_date(request_date, shortage)
+        return {
+            "status": "unfulfilled",
+            "item_name": item_name,
+            "quantity": quantity,
+            "shortage": shortage,
+            "eta": eta,
+            "reason": f"Insufficient stock on {request_date}. Earliest replenishment ETA: {eta}.",
+        }
     create_transaction(item_name, "sales", quantity, quote["total_amount"], request_date)
     return {"status": "fulfilled", "item_name": item_name, "quantity": quantity, "total_amount": quote["total_amount"]}
 
@@ -270,7 +275,7 @@ class OrchestrationAgent:
         result = {"inventory": inv, "quote": quote, "status": "quoted"}
         result["order"] = fulfill_quote(quote, request_date)
         result["financial_report"] = generate_financial_report_tool(request_date)
-        result["status"] = "fulfilled"
+        result["status"] = result["order"].get("status", "quoted")
         return result
 
 
@@ -330,7 +335,6 @@ def generate_financial_report(request_date: str) -> Dict[str, float]:
     return {"cash_balance": current_cash, "inventory_value": inventory_value}
 
 
-@reporting_agent.tool
 def generate_financial_report_tool(request_date: str) -> Dict[str, float]:
     """Tool wrapper so financial reports are available in the agent/tool graph."""
     return generate_financial_report(request_date)
@@ -371,7 +375,7 @@ def run_test_scenarios():
         print(f"Updated Cash: ${current_cash:.2f}")
         print(f"Updated Inventory: ${current_inventory:.2f}")
         orders_accommodated = bool(response.get("status") == "fulfilled")
-        profitability = round(float(quote["total_amount"]) - float(quote["quantity"]) * float(quote["unit_price"]), 2)
+        profitability = round(float(quote["total_amount"]) - float(quote.get("estimated_cost", quote["quantity"] * quote["unit_price"] * 0.8)), 2)
         competitive_pricing = bool(0 <= float(quote.get("discount_rate", 0.0)) <= 0.10)
         results.append(
             {
