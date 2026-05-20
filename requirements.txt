@@ -2,3 +2,4 @@ numpy
 pandas
 SQLAlchemy
 python-dotenv
+pydantic-ai

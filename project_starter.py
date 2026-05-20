@@ -5,6 +5,8 @@ import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Union
 
+from pydantic_ai import Agent
+
 import importlib
 import numpy as np
 import pandas as pd
@@ -165,10 +167,24 @@ def get_cash_balance(as_of_date: Union[str, datetime]) -> float:
 
 # Multi-agent tools + agents
 
+inventory_agent = Agent(
+    name="inventory_agent",
+    system_prompt="Check inventory availability and predict replenishment ETA.",
+)
+
+quote_agent = Agent(
+    name="quote_agent",
+    system_prompt="Generate competitive, profitable quotes based on inventory and cash state.",
+)
+
+ordering_agent = Agent(
+    name="ordering_agent",
+    system_prompt="Execute stock replenishment and sales transactions for accepted quotes.",
+)
+
+
 def parse_request(request_text: str) -> Dict[str, Union[str, int]]:
     req_l = request_text.lower()
-    # Parse multiple "qty + item" mentions and choose the line item with the largest value.
-    # This keeps the baseline contract (single line-item quote) while handling richer inquiries.
     mentions = []
     for paper in paper_supplies:
         item_l = paper["item_name"].lower()
@@ -184,69 +200,69 @@ def parse_request(request_text: str) -> Dict[str, Union[str, int]]:
     return {"item_name": item, "quantity": quantity}
 
 
-class InventoryAgent:
-    def check(self, item_name: str, quantity: int, request_date: str) -> Dict[str, Union[bool, int, str]]:
-        stock_df = get_stock_level(item_name, request_date)
-        current_stock = int(stock_df["current_stock"].iloc[0]) if not stock_df.empty else 0
-        available = current_stock >= quantity
-        shortage = max(0, quantity - current_stock)
-        eta = None if available else get_supplier_delivery_date(request_date, shortage)
-        return {"available": available, "current_stock": current_stock, "shortage": shortage, "eta": eta}
+@inventory_agent.tool
+def check_inventory(item_name: str, quantity: int, request_date: str) -> Dict[str, Union[bool, int, str, None]]:
+    stock_df = get_stock_level(item_name, request_date)
+    current_stock = int(stock_df["current_stock"].iloc[0]) if not stock_df.empty else 0
+    available = current_stock >= quantity
+    shortage = max(0, quantity - current_stock)
+    eta = None if available else get_supplier_delivery_date(request_date, shortage)
+    return {"available": available, "current_stock": current_stock, "shortage": shortage, "eta": eta}
 
 
-class QuoteAgent:
-    def create_quote(self, item_name: str, quantity: int, request_date: str, inventory_result: Dict) -> Dict:
-        unit_price = next((p["unit_price"] for p in paper_supplies if p["item_name"] == item_name), 0.1)
-        base_subtotal = round(unit_price * quantity, 2)
-        # Competitive discounting with profitability floor (>= 8% gross margin).
-        discount_rate = 0.00 if quantity < 200 else 0.03 if quantity < 1000 else 0.06 if quantity < 5000 else 0.09
-        discounted_subtotal = round(base_subtotal * (1 - discount_rate), 2)
-        estimated_cost = round(base_subtotal * 0.80, 2)
-        minimum_profitable = round(estimated_cost * 1.08, 2)
-        total_amount = max(discounted_subtotal, minimum_profitable)
-        historical = search_quote_history([item_name.split()[0]], limit=3)
-        cash = get_cash_balance(request_date)
-        terms = "Net 30" if cash >= 0 else "Prepay"
-        return {
-            "item_name": item_name,
-            "quantity": quantity,
-            "unit_price": unit_price,
-            "base_subtotal": base_subtotal,
-            "discount_rate": discount_rate,
-            "total_amount": round(total_amount, 2),
-            "eta": inventory_result["eta"],
-            "terms": terms,
-            "history_matches": historical,
-        }
+@quote_agent.tool
+def create_quote(item_name: str, quantity: int, request_date: str, inventory_result: Dict) -> Dict:
+    unit_price = next((p["unit_price"] for p in paper_supplies if p["item_name"] == item_name), 0.1)
+    base_subtotal = round(unit_price * quantity, 2)
+    discount_rate = 0.00 if quantity < 200 else 0.03 if quantity < 1000 else 0.06 if quantity < 5000 else 0.09
+    discounted_subtotal = round(base_subtotal * (1 - discount_rate), 2)
+    estimated_cost = round(base_subtotal * 0.80, 2)
+    minimum_profitable = round(estimated_cost * 1.08, 2)
+    total_amount = max(discounted_subtotal, minimum_profitable)
+    historical = search_quote_history([item_name.split()[0]], limit=3)
+    cash = get_cash_balance(request_date)
+    terms = "Net 30" if cash >= 0 else "Prepay"
+    return {
+        "item_name": item_name,
+        "quantity": quantity,
+        "unit_price": unit_price,
+        "base_subtotal": base_subtotal,
+        "discount_rate": discount_rate,
+        "total_amount": round(total_amount, 2),
+        "eta": inventory_result["eta"],
+        "terms": terms,
+        "history_matches": historical,
+    }
 
 
-class OrderingAgent:
-    def fulfill(self, quote: Dict, request_date: str) -> Dict:
-        item_name = quote["item_name"]
-        quantity = int(quote["quantity"])
-        stock_df = get_stock_level(item_name, request_date)
-        current_stock = int(stock_df["current_stock"].iloc[0]) if not stock_df.empty else 0
-        if current_stock < quantity:
-            reorder_qty = quantity - current_stock
-            reorder_price = reorder_qty * quote["unit_price"]
-            create_transaction(item_name, "stock_orders", reorder_qty, reorder_price, request_date)
-        create_transaction(item_name, "sales", quantity, quote["total_amount"], request_date)
-        return {"status": "fulfilled", "item_name": item_name, "quantity": quantity, "total_amount": quote["total_amount"]}
+@ordering_agent.tool
+def fulfill_quote(quote: Dict, request_date: str) -> Dict:
+    item_name = quote["item_name"]
+    quantity = int(quote["quantity"])
+    stock_df = get_stock_level(item_name, request_date)
+    current_stock = int(stock_df["current_stock"].iloc[0]) if not stock_df.empty else 0
+    if current_stock < quantity:
+        reorder_qty = quantity - current_stock
+        reorder_price = reorder_qty * quote["unit_price"]
+        create_transaction(item_name, "stock_orders", reorder_qty, reorder_price, request_date)
+    create_transaction(item_name, "sales", quantity, quote["total_amount"], request_date)
+    return {"status": "fulfilled", "item_name": item_name, "quantity": quantity, "total_amount": quote["total_amount"]}
 
 
 class OrchestrationAgent:
+    """Coordinator that wires pydantic-ai Agents + tools into a deterministic pipeline."""
+
     def __init__(self):
-        self.inventory_agent = InventoryAgent()
-        self.quote_agent = QuoteAgent()
-        self.ordering_agent = OrderingAgent()
+        self.inventory_agent = inventory_agent
+        self.quote_agent = quote_agent
+        self.ordering_agent = ordering_agent
 
     def handle_request(self, request_text: str, request_date: str) -> Dict:
         parsed = parse_request(request_text)
-        inv = self.inventory_agent.check(parsed["item_name"], parsed["quantity"], request_date)
-        quote = self.quote_agent.create_quote(parsed["item_name"], parsed["quantity"], request_date, inv)
+        inv = check_inventory(parsed["item_name"], parsed["quantity"], request_date)
+        quote = create_quote(parsed["item_name"], parsed["quantity"], request_date, inv)
         result = {"inventory": inv, "quote": quote, "status": "quoted"}
-        # Auto-accept demo flow for test harness.
-        result["order"] = self.ordering_agent.fulfill(quote, request_date)
+        result["order"] = fulfill_quote(quote, request_date)
         result["status"] = "fulfilled"
         return result
 
