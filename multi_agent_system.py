@@ -1,18 +1,8 @@
-"""DEPRECATED: use `project_starter.OrchestrationAgent`.
+"""Compatibility module for legacy imports.
 
-This module is retained only as a compatibility shim so older imports do not
-break. The active implementation now lives in `project_starter.py` and is
-wired using pydantic-ai `Agent` instances and `@agent.tool` registrations.
+This module re-exports the active orchestration class from ``agents.py``.
 """
 
-from warnings import warn
-
-from project_starter import OrchestrationAgent
-
-warn(
-    "multi_agent_system.py is deprecated; import OrchestrationAgent from project_starter instead.",
-    DeprecationWarning,
-    stacklevel=2,
-)
+from agents import OrchestrationAgent
 
 __all__ = ["OrchestrationAgent"]
