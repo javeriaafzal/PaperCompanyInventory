@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Union
 
-from pydantic_ai import Agent
+from pydantic_ai import Agent, RunContext
 
 import importlib
 import numpy as np
@@ -338,6 +338,26 @@ def generate_financial_report(request_date: str) -> Dict[str, float]:
 def generate_financial_report_tool(request_date: str) -> Dict[str, float]:
     """Tool wrapper so financial reports are available in the agent/tool graph."""
     return generate_financial_report(request_date)
+
+
+@inventory_agent.tool
+def check_inventory_tool(_ctx: RunContext[None], item_name: str, quantity: int, request_date: str) -> Dict[str, Union[bool, int, str, None]]:
+    return check_inventory(item_name, quantity, request_date)
+
+
+@quote_agent.tool
+def create_quote_tool(_ctx: RunContext[None], item_name: str, quantity: int, request_date: str, inventory_result: Dict) -> Dict:
+    return create_quote(item_name, quantity, request_date, inventory_result)
+
+
+@ordering_agent.tool
+def fulfill_quote_tool(_ctx: RunContext[None], quote: Dict, request_date: str) -> Dict:
+    return fulfill_quote(quote, request_date)
+
+
+@reporting_agent.tool
+def generate_financial_report_agent_tool(_ctx: RunContext[None], request_date: str) -> Dict[str, float]:
+    return generate_financial_report_tool(request_date)
 
 
 def run_test_scenarios():
