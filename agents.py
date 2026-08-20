@@ -39,7 +39,11 @@ def _tool_invocation_model(tool_name: str) -> FunctionModel:
             for part in getattr(message, "parts", []):
                 content = getattr(part, "content", None)
                 if isinstance(content, str):
-                    return ModelResponse([ToolCallPart(tool_name, json.loads(content))])
+                    try:
+                        payload = json.loads(content)
+                    except json.JSONDecodeError:
+                        continue
+                    return ModelResponse([ToolCallPart(tool_name, payload)])
 
         return ModelResponse([TextPart("{}")])
 
@@ -291,6 +295,10 @@ class OrchestrationAgent:
         inv = self.inventory_agent.check_inventory(
             parsed["item_name"], parsed["quantity"], request_date
         )
+        if not parsed.get("catalog_match", True):
+            inv["available"] = False
+            inv["shortage"] = parsed["quantity"]
+            inv["reason"] = f"{parsed['item_name']} is not in the product catalog."
         quote = self.quote_agent.create_quote(
             parsed["item_name"], parsed["quantity"], request_date, inv
         )

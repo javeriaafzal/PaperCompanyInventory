@@ -7,7 +7,7 @@ import pandas as pd
 from sqlalchemy import Engine
 
 from agents import OrchestrationAgent
-from helpers import init_database
+from helpers import generate_financial_report, init_database
 
 
 def run_test_scenarios(db_engine: Engine, paper_supplies: list) -> list:
@@ -34,8 +34,33 @@ def run_test_scenarios(db_engine: Engine, paper_supplies: list) -> list:
         request_date = row["request_date"].strftime("%Y-%m-%d")
         response = orchestrator.handle_request(f"{row['request']} (Date of request: {request_date})", request_date)
         inv, quote, order = response["inventory"], response["quote"], response["order"]
-        profitability = round(float(quote["total_amount"]) - float(quote.get("estimated_cost", quote["quantity"] * quote["unit_price"] * 0.8)), 2)
-        results.append({"request_id": idx + 1, "request_date": request_date, "request_text": row["request"], "item_name": quote["item_name"], "quantity": quote["quantity"], "available_at_request": inv["available"], "shortage_units": inv["shortage"], "eta_if_short": inv["eta"], "quoted_total": quote["total_amount"], "order_status": order.get("status", "not_ordered"), "profitability_dollars": profitability})
+        profitability = round(
+            float(quote["total_amount"])
+            - float(quote.get("estimated_cost", quote["quantity"] * quote["unit_price"] * 0.8)),
+            2,
+        )
+        financials = generate_financial_report(db_engine, request_date)
+        order_status = order.get("status", "not_ordered")
+        results.append({
+            "request_id": idx + 1,
+            "request_date": request_date,
+            "request_text": row["request"],
+            "item_name": quote["item_name"],
+            "quantity": quote["quantity"],
+            "available_at_request": inv["available"],
+            "shortage_units": inv["shortage"],
+            "eta_if_short": inv["eta"],
+            "quoted_unit_price": quote["unit_price"],
+            "base_subtotal": quote["base_subtotal"],
+            "discount_rate": quote["discount_rate"],
+            "quoted_total": quote["total_amount"],
+            "order_status": order_status,
+            "orders_accommodated": order_status == "fulfilled",
+            "competitive_pricing": quote["total_amount"] <= quote["base_subtotal"] and profitability >= 0,
+            "profitability_dollars": profitability,
+            "cash_balance": round(float(financials["cash_balance"]), 2),
+            "inventory_value": round(float(financials["inventory_value"]), 2),
+        })
         time.sleep(0.05)
 
     pd.DataFrame(results).to_csv("test_results.csv", index=False)

@@ -19,7 +19,7 @@ def _normalize_as_of_date(as_of_date: Union[str, datetime]) -> str:
     return f"{as_of_date}T23:59:59" if len(as_of_date) == 10 else as_of_date
 
 
-def generate_sample_inventory(paper_supplies: list, coverage: float = 0.4, seed: int = 137) -> pd.DataFrame:
+def generate_sample_inventory(paper_supplies: list, coverage: float = 1.0, seed: int = 137) -> pd.DataFrame:
     """Create a random inventory subset.
 
     Args:
@@ -92,7 +92,26 @@ def init_database(engine: Engine, paper_supplies: list, db_engine: Engine, seed:
     return engine
 
 
-def parse_request(request_text: str, paper_supplies: list) -> Dict[str, Union[str, int]]:
+def _parse_quantity(quantity_text: str) -> int:
+    """Convert a quantity token that may include thousands separators."""
+    return int(quantity_text.replace(",", ""))
+
+
+def _singularize_item_phrase(item_phrase: str) -> str:
+    """Normalize an extracted item phrase for reporting catalog misses."""
+    item_phrase = re.sub(r"\s+", " ", item_phrase.strip(" .;:!"))
+    words = item_phrase.split()
+    while words and words[0] in {"of", "the", "a", "an", "assorted", "various"}:
+        words.pop(0)
+    item_phrase = " ".join(words) or "Unknown item"
+    if item_phrase.endswith("ies"):
+        item_phrase = f"{item_phrase[:-3]}y"
+    elif item_phrase.endswith("s") and not item_phrase.endswith("ss"):
+        item_phrase = item_phrase[:-1]
+    return item_phrase[:1].upper() + item_phrase[1:]
+
+
+def parse_request(request_text: str, paper_supplies: list) -> Dict[str, Union[str, int, bool]]:
     """Extract requested item and quantity from free-form text.
 
     Args:
@@ -100,22 +119,34 @@ def parse_request(request_text: str, paper_supplies: list) -> Dict[str, Union[st
         paper_supplies: Product catalog to match item names.
 
     Returns:
-        Mapping with normalized ``item_name`` and integer ``quantity``.
+        Mapping with normalized ``item_name``, integer ``quantity``, and whether
+        the item was found in the submitted product catalog.
     """
     req_l = request_text.lower()
+    quantity_pattern = r"(\d{1,3}(?:,\d{3})+|\d+)"
     mentions = []
     for paper in paper_supplies:
         item_l = paper["item_name"].lower()
-        pattern = rf"(\d{{1,6}})\s+(?:sheets?\s+of\s+|rolls?\s+of\s+|reams?\s+of\s+)?{re.escape(item_l)}"
+        pattern = rf"{quantity_pattern}\s+(?:sheets?\s+of\s+|rolls?\s+of\s+|reams?\s+of\s+)?(?:[a-z0-9.%-]+[,\s]+){{0,4}}{re.escape(item_l)}"
         for m in re.finditer(pattern, req_l):
-            mentions.append((int(m.group(1)), paper["item_name"]))
+            mentions.append((_parse_quantity(m.group(1)), paper["item_name"], True))
     if mentions:
-        quantity, item = max(mentions, key=lambda x: x[0])
-        return {"item_name": item, "quantity": quantity}
-    match_qty = re.search(r"(\d+)", req_l)
-    quantity = int(match_qty.group(1)) if match_qty else 100
+        quantity, item, catalog_match = max(mentions, key=lambda x: x[0])
+        return {"item_name": item, "quantity": quantity, "catalog_match": catalog_match}
+
+    unknown_match = re.search(
+        rf"{quantity_pattern}\s+(?:sheets?\s+of\s+|rolls?\s+of\s+|reams?\s+of\s+)?([a-z][a-z0-9 .%'-]*?)(?=,|\band\b|\.|$)",
+        req_l,
+    )
+    if unknown_match:
+        return {
+            "item_name": _singularize_item_phrase(unknown_match.group(2)),
+            "quantity": _parse_quantity(unknown_match.group(1)),
+            "catalog_match": False,
+        }
+
     item = next((p["item_name"] for p in paper_supplies if p["item_name"].lower() in req_l), "A4 paper")
-    return {"item_name": item, "quantity": quantity}
+    return {"item_name": item, "quantity": 100, "catalog_match": item != "A4 paper"}
 
 
 def create_transaction(db_engine: Engine, item_name: str, transaction_type: str, quantity: int, price: float, date: Union[str, datetime]) -> int:
