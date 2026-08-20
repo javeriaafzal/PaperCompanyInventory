@@ -289,8 +289,8 @@ class OrchestrationAgent:
         self.ordering_agent = OrderingAgent(db_engine)
         self.reporting_agent = ReportingAgent(db_engine)
 
-    def handle_request(self, request_text: str, request_date: str) -> Dict:
-        """Run end-to-end request processing by delegating to worker agents."""
+    def _process_request(self, request_text: str, request_date: str) -> Dict[str, Any]:
+        """Run internal workflow and retain agent details for evaluation/reporting."""
         parsed = parse_request(request_text, self.paper_supplies)
         inv = self.inventory_agent.check_inventory(
             parsed["item_name"], parsed["quantity"], request_date
@@ -309,3 +309,42 @@ class OrchestrationAgent:
             "order": order,
             "status": order.get("status", "quoted"),
         }
+
+    def _compose_customer_response(
+        self, quote: Dict[str, Any], order: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Create a customer-safe response that omits internal pricing and state."""
+        discount_rate = float(quote.get("discount_rate", 0.0))
+        discount_applied = (
+            f"{discount_rate:.0%}" if discount_rate > 0 else "No discount applied"
+        )
+        status = order.get("status", "quoted")
+        eta = order.get("eta") or quote.get("eta")
+        fulfillment = status.capitalize()
+        if eta and status != "fulfilled":
+            fulfillment = f"{fulfillment}; estimated availability {eta}"
+
+        customer_quote = {
+            "item": quote["item_name"],
+            "quantity": int(quote["quantity"]),
+            "total_price": round(float(quote["total_amount"]), 2),
+            "discount_applied": discount_applied,
+            "payment_terms": quote["terms"],
+            "fulfillment_status": fulfillment,
+        }
+        message_parts = [
+            f"Quote for {customer_quote['quantity']} units of {customer_quote['item']}:",
+            f"total price ${customer_quote['total_price']:.2f}.",
+            f"Discount: {customer_quote['discount_applied']}.",
+            f"Payment terms: {customer_quote['payment_terms']}.",
+            f"Fulfillment status: {customer_quote['fulfillment_status']}.",
+        ]
+        return {
+            "message": " ".join(message_parts),
+            "quote": customer_quote,
+        }
+
+    def handle_request(self, request_text: str, request_date: str) -> Dict[str, Any]:
+        """Return a readable, customer-facing response for an incoming request."""
+        result = self._process_request(request_text, request_date)
+        return self._compose_customer_response(result["quote"], result["order"])

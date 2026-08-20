@@ -32,7 +32,7 @@ def run_test_scenarios(db_engine: Engine, paper_supplies: list) -> list:
     results = []
     for idx, row in quote_requests_sample.iterrows():
         request_date = row["request_date"].strftime("%Y-%m-%d")
-        response = orchestrator.handle_request(f"{row['request']} (Date of request: {request_date})", request_date)
+        response = orchestrator._process_request(f"{row['request']} (Date of request: {request_date})", request_date)
         inv, quote, order = response["inventory"], response["quote"], response["order"]
         profitability = round(
             float(quote["total_amount"])
