@@ -9,6 +9,7 @@ The implemented architecture is a sequential, orchestrated multi-agent pipeline 
 - **InventoryAgent**: checks date-specific stock, computes shortages, and estimates delivery dates.
 - **QuoteAgent**: computes unit pricing/subtotals, applies volume discounts with profitability floor, and sets terms from cash balance.
 - **OrderingAgent**: revalidates stock and writes transactions (restock if required, then sale).
+- **ReportingAgent**: exposes financial and inventory snapshots through helper-backed reporting tools.
 
 ### Why this architecture was chosen
 - The workflow mirrors real business stages (feasibility → pricing → execution).
@@ -40,6 +41,7 @@ The project evaluation harness writes `test_results.csv` from `run_test_scenario
 - The current evaluation mode auto-accepts every quote, which limits realism for customer decision behavior.
 - Request parsing currently prioritizes one detected line item (largest quantity), so multi-line-item requests are simplified.
 - Historical pricing is used as context but not yet as a strict dynamic benchmarking model.
+- All seven starter helper functions are now represented in pydantic-ai tool definitions, including inventory snapshots and financial reporting.
 
 ## 3) Suggested Improvements
 
@@ -54,8 +56,8 @@ The project evaluation harness writes `test_results.csv` from `run_test_scenario
 3. **Add Business Advisor Agent (standout suggestion).**
    - Periodically analyze fulfilled/unfulfilled patterns and recommend reorder thresholds, discount tuning, and demand forecasting actions.
 
-4. **Integrate richer financial tooling.**
-   - Introduce `get_all_inventory` and `generate_financial_report` helpers (or equivalent wrappers) into Quote/Advisor decisions for stronger, explainable policy.
+4. **Deepen reporting-driven policy decisions.**
+   - The helper-backed inventory and financial report tools are now available; the next step is to use their outputs for automated reorder-threshold tuning and discount-policy recommendations.
 
 ## 4) Final Submission Checklist
 

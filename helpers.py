@@ -12,6 +12,13 @@ from sqlalchemy import Engine
 from sqlalchemy.sql import text
 
 
+def _normalize_as_of_date(as_of_date: Union[str, datetime]) -> str:
+    """Normalize date-only cutoffs to include the full day."""
+    if isinstance(as_of_date, datetime):
+        return as_of_date.isoformat()
+    return f"{as_of_date}T23:59:59" if len(as_of_date) == 10 else as_of_date
+
+
 def generate_sample_inventory(paper_supplies: list, coverage: float = 0.4, seed: int = 137) -> pd.DataFrame:
     """Create a random inventory subset.
 
@@ -109,6 +116,128 @@ def parse_request(request_text: str, paper_supplies: list) -> Dict[str, Union[st
     quantity = int(match_qty.group(1)) if match_qty else 100
     item = next((p["item_name"] for p in paper_supplies if p["item_name"].lower() in req_l), "A4 paper")
     return {"item_name": item, "quantity": quantity}
+
+
+def create_transaction(db_engine: Engine, item_name: str, transaction_type: str, quantity: int, price: float, date: Union[str, datetime]) -> int:
+    """Persist a sales or stock-order transaction.
+
+    Args:
+        db_engine: SQLAlchemy engine to write to.
+        item_name: Inventory item involved in the transaction.
+        transaction_type: Either ``stock_orders`` or ``sales``.
+        quantity: Number of units.
+        price: Total transaction amount.
+        date: ISO date string or datetime.
+
+    Returns:
+        Inserted transaction row id.
+    """
+    date_str = date.isoformat() if isinstance(date, datetime) else date
+    if transaction_type not in {"stock_orders", "sales"}:
+        raise ValueError("Transaction type must be 'stock_orders' or 'sales'")
+    transaction = pd.DataFrame([{
+        "item_name": item_name,
+        "transaction_type": transaction_type,
+        "units": quantity,
+        "price": price,
+        "transaction_date": date_str,
+    }])
+    transaction.to_sql("transactions", db_engine, if_exists="append", index=False)
+    result = pd.read_sql("SELECT last_insert_rowid() as id", db_engine)
+    return int(result.iloc[0]["id"])
+
+
+def get_all_inventory(db_engine: Engine, as_of_date: Union[str, datetime]) -> pd.DataFrame:
+    """Return computed stock levels for all inventory items as of a date.
+
+    Args:
+        db_engine: SQLAlchemy engine to query.
+        as_of_date: ISO date string or datetime cutoff.
+
+    Returns:
+        DataFrame with inventory metadata and computed stock columns.
+    """
+    as_of_date = _normalize_as_of_date(as_of_date)
+    query = """
+        SELECT i.item_name, i.category, i.unit_price, i.min_stock_level,
+        COALESCE(SUM(CASE
+            WHEN t.transaction_type='stock_orders' THEN t.units
+            WHEN t.transaction_type='sales' THEN -t.units
+            ELSE 0
+        END), 0) AS current_stock
+        FROM inventory i
+        LEFT JOIN transactions t
+            ON i.item_name = t.item_name AND t.transaction_date <= :as_of_date
+        GROUP BY i.item_name, i.category, i.unit_price, i.min_stock_level
+        ORDER BY i.item_name
+    """
+    return pd.read_sql(query, db_engine, params={"as_of_date": as_of_date})
+
+
+def get_stock_level(db_engine: Engine, item_name: str, as_of_date: Union[str, datetime]) -> pd.DataFrame:
+    """Return computed stock level for one item as of a date.
+
+    Args:
+        db_engine: SQLAlchemy engine to query.
+        item_name: Item to evaluate.
+        as_of_date: ISO date string or datetime cutoff.
+
+    Returns:
+        DataFrame with ``item_name`` and ``current_stock`` columns.
+    """
+    as_of_date = _normalize_as_of_date(as_of_date)
+    query = """
+        SELECT item_name,
+        COALESCE(SUM(CASE WHEN transaction_type='stock_orders' THEN units WHEN transaction_type='sales' THEN -units ELSE 0 END),0) AS current_stock
+        FROM transactions
+        WHERE item_name=:item_name AND transaction_date <= :as_of_date
+    """
+    return pd.read_sql(query, db_engine, params={"item_name": item_name, "as_of_date": as_of_date})
+
+
+def get_cash_balance(db_engine: Engine, as_of_date: Union[str, datetime]) -> float:
+    """Calculate cash balance from historical transactions.
+
+    Args:
+        db_engine: SQLAlchemy engine to query.
+        as_of_date: ISO date string or datetime cutoff.
+
+    Returns:
+        Cash as sales total minus purchase total.
+    """
+    as_of_date = _normalize_as_of_date(as_of_date)
+    transactions = pd.read_sql("SELECT * FROM transactions WHERE transaction_date <= :as_of_date", db_engine, params={"as_of_date": as_of_date})
+    if transactions.empty:
+        return 0.0
+    sales = transactions.loc[transactions["transaction_type"] == "sales", "price"].sum()
+    purchases = transactions.loc[transactions["transaction_type"] == "stock_orders", "price"].sum()
+    return float(sales - purchases)
+
+
+def generate_financial_report(db_engine: Engine, as_of_date: Union[str, datetime]) -> Dict[str, Union[str, float]]:
+    """Generate a financial snapshot as of a date.
+
+    Args:
+        db_engine: SQLAlchemy engine to query.
+        as_of_date: ISO date string or datetime cutoff.
+
+    Returns:
+        Mapping with cash balance, sales, stock-order spend, inventory value, and profit.
+    """
+    as_of_date = _normalize_as_of_date(as_of_date)
+    transactions = pd.read_sql("SELECT * FROM transactions WHERE transaction_date <= :as_of_date", db_engine, params={"as_of_date": as_of_date})
+    sales_total = 0.0 if transactions.empty else float(transactions.loc[transactions["transaction_type"] == "sales", "price"].sum())
+    stock_order_total = 0.0 if transactions.empty else float(transactions.loc[transactions["transaction_type"] == "stock_orders", "price"].sum())
+    inventory = get_all_inventory(db_engine, as_of_date)
+    inventory_value = 0.0 if inventory.empty else float((inventory["current_stock"] * inventory["unit_price"]).sum())
+    return {
+        "as_of_date": as_of_date,
+        "cash_balance": sales_total - stock_order_total,
+        "sales_total": sales_total,
+        "stock_order_total": stock_order_total,
+        "inventory_value": inventory_value,
+        "gross_profit": sales_total - stock_order_total,
+    }
 
 
 def get_supplier_delivery_date(input_date_str: str, quantity: int) -> str:
