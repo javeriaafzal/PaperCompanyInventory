@@ -1,13 +1,20 @@
 """Agent definitions and orchestration workflow."""
 
-from datetime import datetime
 from typing import Dict, Union
 
-import pandas as pd
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent
 from sqlalchemy import Engine
 
-from helpers import get_supplier_delivery_date, parse_request, search_quote_history
+from helpers import (
+    create_transaction,
+    generate_financial_report,
+    get_all_inventory,
+    get_cash_balance,
+    get_stock_level,
+    get_supplier_delivery_date,
+    parse_request,
+    search_quote_history,
+)
 
 
 class OrchestrationAgent:
@@ -37,65 +44,45 @@ class OrchestrationAgent:
         self.quote_agent = Agent(name="quote_agent", system_prompt="Generate competitive, profitable quotes based on inventory and cash state.")
         self.ordering_agent = Agent(name="ordering_agent", system_prompt="Execute stock replenishment and sales transactions for accepted quotes.")
         self.reporting_agent = Agent(name="reporting_agent", system_prompt="Generate financial and inventory snapshots for reporting.")
+        self._register_tools()
 
-    def create_transaction(self, item_name: str, transaction_type: str, quantity: int, price: float, date: Union[str, datetime]) -> int:
-        """Persist a sales or stock-order transaction.
+    def _register_tools(self) -> None:
+        """Bind starter helper functions to pydantic-ai worker agents as tools."""
 
-        Args:
-            item_name: Inventory item involved in the transaction.
-            transaction_type: Either ``stock_orders`` or ``sales``.
-            quantity: Number of units.
-            price: Total transaction amount.
-            date: ISO date string or datetime.
+        @self.ordering_agent.tool_plain
+        def record_transaction(item_name: str, transaction_type: str, quantity: int, price: float, date: str) -> int:
+            """Create a transaction for sales or stock replenishment."""
+            return create_transaction(self.db_engine, item_name, transaction_type, quantity, price, date)
 
-        Returns:
-            Inserted transaction row id.
-        """
-        date_str = date.isoformat() if isinstance(date, datetime) else date
-        if transaction_type not in {"stock_orders", "sales"}:
-            raise ValueError("Transaction type must be 'stock_orders' or 'sales'")
-        transaction = pd.DataFrame([{"item_name": item_name, "transaction_type": transaction_type, "units": quantity, "price": price, "transaction_date": date_str}])
-        transaction.to_sql("transactions", self.db_engine, if_exists="append", index=False)
-        result = pd.read_sql("SELECT last_insert_rowid() as id", self.db_engine)
-        return int(result.iloc[0]["id"])
+        @self.inventory_agent.tool_plain
+        def list_inventory(as_of_date: str) -> list[dict]:
+            """Get computed stock levels for every inventory item."""
+            return get_all_inventory(self.db_engine, as_of_date).to_dict(orient="records")
 
-    def get_stock_level(self, item_name: str, as_of_date: Union[str, datetime]) -> pd.DataFrame:
-        """Return computed stock level for one item as of a date.
+        @self.inventory_agent.tool_plain
+        def stock_level(item_name: str, as_of_date: str) -> list[dict]:
+            """Get computed stock level for one inventory item."""
+            return get_stock_level(self.db_engine, item_name, as_of_date).to_dict(orient="records")
 
-        Args:
-            item_name: Item to evaluate.
-            as_of_date: ISO date string or datetime cutoff.
+        @self.inventory_agent.tool_plain
+        def supplier_delivery_date(input_date_str: str, quantity: int) -> str:
+            """Get expected supplier delivery date for a replenishment quantity."""
+            return get_supplier_delivery_date(input_date_str, quantity)
 
-        Returns:
-            DataFrame with ``item_name`` and ``current_stock`` columns.
-        """
-        if isinstance(as_of_date, datetime):
-            as_of_date = as_of_date.isoformat()
-        query = """
-            SELECT item_name,
-            COALESCE(SUM(CASE WHEN transaction_type='stock_orders' THEN units WHEN transaction_type='sales' THEN -units ELSE 0 END),0) AS current_stock
-            FROM transactions
-            WHERE item_name=:item_name AND transaction_date <= :as_of_date
-        """
-        return pd.read_sql(query, self.db_engine, params={"item_name": item_name, "as_of_date": as_of_date})
+        @self.quote_agent.tool_plain
+        def cash_balance(as_of_date: str) -> float:
+            """Get available cash balance as of a date."""
+            return get_cash_balance(self.db_engine, as_of_date)
 
-    def get_cash_balance(self, as_of_date: Union[str, datetime]) -> float:
-        """Calculate cash balance from historical transactions.
+        @self.reporting_agent.tool_plain
+        def financial_report(as_of_date: str) -> Dict[str, Union[str, float]]:
+            """Generate financial summary metrics as of a date."""
+            return generate_financial_report(self.db_engine, as_of_date)
 
-        Args:
-            as_of_date: ISO date string or datetime cutoff.
-
-        Returns:
-            Cash as sales total minus purchase total.
-        """
-        if isinstance(as_of_date, datetime):
-            as_of_date = as_of_date.isoformat()
-        transactions = pd.read_sql("SELECT * FROM transactions WHERE transaction_date <= :as_of_date", self.db_engine, params={"as_of_date": as_of_date})
-        if transactions.empty:
-            return 0.0
-        sales = transactions.loc[transactions["transaction_type"] == "sales", "price"].sum()
-        purchases = transactions.loc[transactions["transaction_type"] == "stock_orders", "price"].sum()
-        return float(sales - purchases)
+        @self.quote_agent.tool_plain
+        def quote_history(search_terms: list[str], limit: int = 5) -> list[dict]:
+            """Search historical quotes by keyword."""
+            return search_quote_history(self.db_engine, search_terms, limit)
 
     def check_inventory(self, item_name: str, quantity: int, request_date: str) -> Dict[str, Union[bool, int, str, None]]:
         """Evaluate stock availability and shortage ETA.
@@ -108,7 +95,7 @@ class OrchestrationAgent:
         Returns:
             Availability, current stock, shortage, and optional ETA.
         """
-        stock_df = self.get_stock_level(item_name, request_date)
+        stock_df = get_stock_level(self.db_engine, item_name, request_date)
         current_stock = int(stock_df["current_stock"].iloc[0]) if not stock_df.empty else 0
         available = current_stock >= quantity
         shortage = max(0, quantity - current_stock)
@@ -135,7 +122,7 @@ class OrchestrationAgent:
         minimum_profitable = round(estimated_cost * 1.08, 2)
         total_amount = max(discounted_subtotal, minimum_profitable)
         historical = search_quote_history(self.db_engine, [item_name.split()[0]], limit=3)
-        terms = "Net 30" if self.get_cash_balance(request_date) >= 0 else "Prepay"
+        terms = "Net 30" if get_cash_balance(self.db_engine, request_date) >= 0 else "Prepay"
         return {"item_name": item_name, "quantity": quantity, "unit_price": unit_price, "base_subtotal": base_subtotal, "discount_rate": discount_rate, "estimated_cost": estimated_cost, "total_amount": round(total_amount, 2), "eta": inventory_result["eta"], "terms": terms, "history_matches": historical}
 
     def fulfill_quote(self, quote: Dict, request_date: str) -> Dict:
@@ -150,12 +137,12 @@ class OrchestrationAgent:
         """
         item_name = quote["item_name"]
         quantity = int(quote["quantity"])
-        current_stock = int(self.get_stock_level(item_name, request_date)["current_stock"].iloc[0])
+        current_stock = int(get_stock_level(self.db_engine, item_name, request_date)["current_stock"].iloc[0])
         if current_stock < quantity:
             shortage = quantity - current_stock
             eta = get_supplier_delivery_date(request_date, shortage)
             return {"status": "unfulfilled", "item_name": item_name, "quantity": quantity, "shortage": shortage, "eta": eta, "reason": f"Insufficient stock on {request_date}. Earliest replenishment ETA: {eta}."}
-        self.create_transaction(item_name, "sales", quantity, quote["total_amount"], request_date)
+        create_transaction(self.db_engine, item_name, "sales", quantity, quote["total_amount"], request_date)
         return {"status": "fulfilled", "item_name": item_name, "quantity": quantity, "total_amount": quote["total_amount"]}
 
     def handle_request(self, request_text: str, request_date: str) -> Dict:
