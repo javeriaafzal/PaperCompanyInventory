@@ -313,7 +313,7 @@ class OrchestrationAgent:
     def _compose_customer_response(
         self, quote: Dict[str, Any], order: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Create a customer-safe response that omits internal pricing and state."""
+        """Create an explainable customer response without request PII or internals."""
         discount_rate = float(quote.get("discount_rate", 0.0))
         discount_applied = (
             f"{discount_rate:.0%}" if discount_rate > 0 else "No discount applied"
@@ -324,6 +324,25 @@ class OrchestrationAgent:
         if eta and status != "fulfilled":
             fulfillment = f"{fulfillment}; estimated availability {eta}"
 
+        reason_code = None
+        explanation = None
+        if status != "fulfilled":
+            reason_code = "OUT_OF_STOCK"
+            explanation = (
+                "We do not currently have enough stock to complete this order. "
+                "Please try a smaller quantity or choose a different paper type."
+            )
+
+        calculation = [
+            (
+                f"Base price: ${float(quote['unit_price']):.2f} × "
+                f"{int(quote['quantity'])} units = "
+                f"${float(quote['base_subtotal']):.2f}."
+            ),
+            f"Bulk discount tier: {discount_applied}.",
+            f"Payment terms: {quote['terms']}; taxes and shipping are not included.",
+        ]
+
         customer_quote = {
             "item": quote["item_name"],
             "quantity": int(quote["quantity"]),
@@ -331,6 +350,9 @@ class OrchestrationAgent:
             "discount_applied": discount_applied,
             "payment_terms": quote["terms"],
             "fulfillment_status": fulfillment,
+            "reason_code": reason_code,
+            "explanation": explanation,
+            "how_we_calculated_this": calculation,
         }
         message_parts = [
             f"Quote for {customer_quote['quantity']} units of {customer_quote['item']}:",
@@ -338,13 +360,31 @@ class OrchestrationAgent:
             f"Discount: {customer_quote['discount_applied']}.",
             f"Payment terms: {customer_quote['payment_terms']}.",
             f"Fulfillment status: {customer_quote['fulfillment_status']}.",
+            *(
+                [f"Reason: {reason_code} — {explanation}"]
+                if reason_code
+                else []
+            ),
+            "How we calculated this:",
+            *(f"• {item}" for item in calculation),
         ]
         return {
-            "message": " ".join(message_parts),
+            "message": "\n".join(message_parts),
             "quote": customer_quote,
         }
 
     def handle_request(self, request_text: str, request_date: str) -> Dict[str, Any]:
         """Return a readable, customer-facing response for an incoming request."""
-        result = self._process_request(request_text, request_date)
-        return self._compose_customer_response(result["quote"], result["order"])
+        try:
+            result = self._process_request(request_text, request_date)
+            return self._compose_customer_response(result["quote"], result["order"])
+        except Exception:
+            # Do not expose stack traces, database details, or echoed request PII.
+            return {
+                "message": (
+                    "We couldn't prepare your quote right now. Please try again, "
+                    "try a smaller quantity, or choose a different paper type."
+                ),
+                "quote": None,
+                "reason_code": "QUOTE_PROCESSING_ERROR",
+            }
