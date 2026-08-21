@@ -34,6 +34,7 @@ def run_test_scenarios(db_engine: Engine, paper_supplies: list) -> list:
         request_date = row["request_date"].strftime("%Y-%m-%d")
         response = orchestrator._process_request(f"{row['request']} (Date of request: {request_date})", request_date)
         inv, quote, order = response["inventory"], response["quote"], response["order"]
+        customer_response = orchestrator._compose_customer_response(quote, order)
         profitability = round(
             float(quote["total_amount"])
             - float(quote.get("estimated_cost", quote["quantity"] * quote["unit_price"] * 0.8)),
@@ -45,6 +46,8 @@ def run_test_scenarios(db_engine: Engine, paper_supplies: list) -> list:
             "request_id": idx + 1,
             "request_date": request_date,
             "request_text": row["request"],
+            "customer_response": customer_response["message"],
+            "reason_code": customer_response["quote"]["reason_code"],
             "item_name": quote["item_name"],
             "quantity": quote["quantity"],
             "available_at_request": inv["available"],
